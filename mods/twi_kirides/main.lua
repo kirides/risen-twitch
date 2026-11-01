@@ -17,6 +17,12 @@ end
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
+-- numeric gESkill of a friendly skill name ("Strength", "Sneak")
+local function skill_id(name)
+    local enum = R.balance.skill_enum(name)
+    return enum and R.item.skill_id(enum)
+end
+
 local function rint(lo, hi) return R.random.int(lo, hi) end
 
 local function later(seconds, undo) timed[#timed + 1] = { at = R.clock() + seconds, undo = undo } end
@@ -180,10 +186,95 @@ actions.twi_randomstatbonus = function(_, argv, p)
     end
     local skill = ({ STR = "Strength", DEX = "Dexterity", INT = "Intelligence" })[atr]
     if not skill then return false, "usage: TWI_RandomStatBonus <STR|DEX|INT|HP|MANA> <min> <max> <low> <high>" end
-    local id = R.item.skill_id(skill)
+    local id = skill_id(skill)
     local base = id and R.npc.skill_raw(p, id)
     if not base then return false, "cannot read " .. skill end
     return R.npc.set_skill_base(p, id, clamp(base + delta, lo, hi)) ~= nil
+end
+
+-- ---- teleport, equipment, talents ------------------------------------------------------------------------------------------------------------------
+
+-- TWI_RandomWaypoint: onto a random freepoint of the world (the game's own ~170 guard points, camp fires, ... : places the navigation mesh knows)
+actions.twi_randomwaypoint = function(_, _, p)
+    local pts = R.world.points({ limit = 500 })
+    local fps = {}
+    for _, pt in ipairs(pts or {}) do
+        if pt.kind == "freepoint" then fps[#fps + 1] = pt end
+    end
+    if #fps == 0 then return false end
+    local pt = R.random.choice(fps)
+    return p:teleport(pt.entity) == true
+end
+
+local function prop(item, set, name)
+    local ok, v = pcall(item.get_property, item, set, name)
+    return ok and v or nil
+end
+
+-- TWI_Weakest_Weapon: wields the carried melee/ranged weapon with the lowest damage (arrows and bolts are ammunition, not weapons)
+actions.twi_weakest_weapon = function(_, _, p)
+    local best, best_dmg
+    for i = 0, (p:stack_count() or 0) - 1 do
+        local it = p:stack_item(i)
+        if it then
+            local cat = tostring(prop(it, "gCItem_PS", "Category") or "")
+            local use = tostring(prop(it, "gCItem_PS", "UseType") or "")
+            if cat:find("Weapon", 1, true) and not use:find("Arrow", 1, true) and not use:find("Bolt", 1, true) and not use:find("None", 1, true) then
+                local dmg = tonumber(prop(it, "gCDamage_PS", "DamageAmount")) or 0
+                if not best_dmg or dmg < best_dmg then best, best_dmg = it:name(), dmg end
+            end
+        end
+    end
+    if not best then return false, "the player carries no weapon" end
+    return R.item.equip(p, best) == true
+end
+
+-- TWI_RandomArmor: a random body armor the player can wear (protection above 0, no women's dresses, ghosts or story costumes)
+local armor_pool
+local function armors()
+    if armor_pool then return armor_pool end
+    armor_pool = {}
+    for _, name in ipairs(R.template.list("Items/Armor")) do
+        if not name:find("Woman") and not name:find("Ghost") and not name:find("Intro") and not name:find("Landl") and not name:find("Titanlord") then
+            local mods = R.item.modifiers(name)
+            local prot = 0
+            for _, m in ipairs(mods or {}) do
+                if tostring(m.skill or ""):find("Prot", 1, true) then prot = prot + (tonumber(m.amount) or 0) end
+            end
+            if prot > 0 then armor_pool[#armor_pool + 1] = name end
+        end
+    end
+    return armor_pool
+end
+actions.twi_randomarmor = function(_, _, p)
+    local pool = armors()
+    if #pool == 0 then return false, "no armor templates found" end
+    local usable = {}
+    for _, name in ipairs(pool) do
+        if R.item.can_use(p, name) then usable[#usable + 1] = name end
+    end
+    local pick = R.random.choice(#usable > 0 and usable or pool)
+    if R.item.give(p, pick, 1) < 0 then return false end
+    R.item.equip(p, pick)
+    return true, nil, pick
+end
+
+local TALENTS = { "Acrobat", "Pickpocket", "Lockpick", "Sneak", "Mining", "Smith", "Alchemy", "Trophy", "Scribe" }
+
+-- sets one talent to a random value between its current base and its maximum (or 1 when the engine reports no maximum)
+local function randomize_talent(p, name)
+    local id = skill_id(name)
+    if not id then return false end
+    local base, _, _, _, max = R.npc.skill_raw(p, id)
+    if not base then return false end
+    local top = (max and max > 0) and max or math.max(base, 3)
+    return R.npc.set_skill_base(p, id, rint(0, top)) ~= nil
+end
+actions.twi_randomtalent = function(_, _, p) return randomize_talent(p, R.random.choice(TALENTS)) end
+actions.twi_randomtalents = function(_, _, p)
+    local any = false
+    for _, name in ipairs(TALENTS) do any = randomize_talent(p, name) or any end
+    return any
 end
 
 -- ---- world: time, weather, speed ------------------------------------------------------------------------------------------------------------------
@@ -217,7 +308,7 @@ R.on("twitch.command", function(ctx)
     if not fn then return end
     local player = R.entity.player()
     if not player then ctx.defer = true return end
-    local ok, res, why = pcall(fn, ctx, ctx.argv, player)
+    local ok, res, why, msg = pcall(fn, ctx, ctx.argv, player)
     if not ok then
         R.log.error(("twi: %s failed: %s"):format(ctx.command, tostring(res)))
         ctx.handled = true     -- a broken action must not come back again and again
@@ -225,6 +316,7 @@ R.on("twitch.command", function(ctx)
     end
     if res then
         ctx.handled = true
+        if msg then ctx.message = ctx.user .. ": " .. ctx.command .. " " .. msg end
     elseif why then
         R.log.warn(("twi: %s: %s"):format(ctx.command, why))
         ctx.handled = true     -- bad arguments: retrying will not help

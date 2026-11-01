@@ -5,10 +5,10 @@ Twitch integration for Risen Enhanced on top of [risen-spass](../risen-spass), t
 | Mod | Role |
 |---|---|
 | `mods/twitch_integration` | Base. Client of the named pipe `\\.\pipe\__TwitchIntegration_Kirides_Conn` that the Twitch bridge hosts. Reads `TYPE user command [args]` lines (`REWARD_ADD`, `BITS_USED`, `FOLLOW`, `CHAT`) and **executes them only inside a running game session** (after `world.ready`, player alive; not at the main menu, not while loading). Offers each event to the action mods with `risen.emit("twitch.command", ctx)`; a command nobody handles may run as a console command (`console_allow`, default `weather,timescale`). |
-| `mods/twi_kirides` | The `TWI_*` actions: `TWI_SpawnEnemy/Npc/NpcImmortal/NpcNamed/NpcOneOf/EnemyOneOf`, `TWI_SpawnRandomMonster[NoLimit]`, `TWI_Raid_Beasts/Lizards`, `TWI_Money`, `TWI_SpawnItemRandom`, `TWI_FullHeal`, `TWI_SetHP[_Timed]`, `TWI_SetMana[_Timed]`, `TWI_RandomHP_Pct`, `TWI_RandomStatBonus`, `TWI_Time`, `TWI_Weather`, `TWI_Southpark`, `TWI_Slowdown`. |
+| `mods/twi_kirides` | The `TWI_*` actions: `TWI_SpawnEnemy/Npc/NpcImmortal/NpcNamed/NpcOneOf/EnemyOneOf`, `TWI_SpawnRandomMonster[NoLimit]`, `TWI_Raid_Beasts/Lizards`, `TWI_Money`, `TWI_SpawnItemRandom`, `TWI_FullHeal`, `TWI_SetHP[_Timed]`, `TWI_SetMana[_Timed]`, `TWI_RandomHP_Pct`, `TWI_RandomStatBonus`, `TWI_RandomWaypoint`, `TWI_Weakest_Weapon`, `TWI_RandomArmor`, `TWI_RandomTalent[s]`, `TWI_Time`, `TWI_Weather`, `TWI_Southpark`, `TWI_Slowdown`. |
 | `mods/twitch_test` | Live scenario `twitch`. |
 
-Not ported (no Risen equivalent yet): `TWI_RandomWaypoint`, `TWI_InvertKeyControls`, `TWI_VoicePitch`, `TWI_Weakest_Weapon`, the random talents / armor, bandit and orc raids (replaced by `TWI_Raid_Beasts` and `TWI_Raid_Lizards`).
+Not ported yet: `TWI_InvertKeyControls` (probably possible with `risen.input`), `TWI_VoicePitch` (no API found), bandit and orc raids (replaced by `TWI_Raid_Beasts` and `TWI_Raid_Lizards`).
 
 ## Writing an action mod
 

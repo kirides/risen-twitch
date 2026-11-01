@@ -8,7 +8,7 @@ T.plan {
     "pipe connected", "early line was not executed outside a session", "world ready", "early line executed in the session",
     "TWI_Money gives gold", "TWI_Money takes gold", "TWI_SetHP", "TWI_Time", "TWI_SpawnEnemy", "TWI_SpawnRandomMonster",
     "unknown command is ignored", "bad arguments do not come back", "unspawnable template",
-    "console fallback (weather)", "bad line is counted", "gate closes with the session",
+    "console fallback (weather)", "TWI_RandomWaypoint", "TWI_Weakest_Weapon", "TWI_RandomArmor", "TWI_RandomTalent", "TWI_RandomTalents", "TWI_RandomStatBonus STR", "bad line is counted", "gate closes with the session",
 }
 
 -- the gold at world.ready, read by a handler that runs before the base mod's tick can execute anything
@@ -17,6 +17,9 @@ risen.on("world.ready", function()
     local pl = risen.entity.player()
     gold_at_ready = pl and risen.item.money(pl)
 end, 100)
+
+local equipped = {}
+risen.on("item.equipped", function(owner, template) equipped[#equipped + 1] = template end)
 
 local function status()
     local out = {}
@@ -91,6 +94,54 @@ T.run(function()
     local ex = status().executed
     run_and_wait("CHAT bob weather Foggy_Rain")
     T.expect("console fallback (weather)", status().executed == ex + 1)
+
+    -- equipment, talents, teleport
+    local x0, y0, z0 = p:position()
+    run_and_wait("CHAT bob TWI_RandomWaypoint")
+    local x1, y1, z1 = p:position()
+    T.expect("TWI_RandomWaypoint", math.abs(x1 - x0) + math.abs(z1 - z0) > 50, ("%.0f,%.0f -> %.0f,%.0f"):format(x0, z0, x1, z1))
+
+    risen.item.give(p, "It_1H_Sword", 1)
+    risen.item.give(p, "It_Axe_Waraxe", 1)
+    equipped = {}
+    run_and_wait("CHAT bob TWI_Weakest_Weapon")
+    T.wait_until(function() return #equipped > 0 end, 10, "a weapon was equipped")
+    local w = equipped[#equipped]
+    local dmg = tonumber(risen.template.get(w) and risen.template.get(w):get_property("gCDamage_PS", "DamageAmount")) or 999
+    T.expect("TWI_Weakest_Weapon", w ~= "It_Axe_Waraxe" and dmg <= 15, ("%s damage %s"):format(w, dmg))
+
+    local before = risen.item.count(p, "It_Armor_Guard")
+    run_and_wait("CHAT bob TWI_RandomArmor")
+    local armors_now = 0
+    for i = 0, p:stack_count() - 1 do
+        local it = p:stack_item(i)
+        if it and tostring(it:name()):find("^It_Armor") then armors_now = armors_now + 1 end
+    end
+    T.expect("TWI_RandomArmor", armors_now >= 1, "armor stacks: " .. armors_now)
+
+    local function talents()
+        local t = {}
+        for _, n in ipairs { "Acrobat", "Pickpocket", "Lockpick", "Sneak", "Mining", "Smith", "Alchemy", "Trophy", "Scribe" } do
+            t[n] = (risen.npc.skill_raw(p, risen.item.skill_id(risen.balance.skill_enum(n))))
+        end
+        return t
+    end
+    local t0 = talents()
+    local changed = false
+    for _ = 1, 6 do
+        run_and_wait("CHAT bob TWI_RandomTalent")
+        local t1 = talents()
+        for k, v in pairs(t1) do if v ~= t0[k] then changed = true end end
+        if changed then break end
+    end
+    T.expect("TWI_RandomTalent", changed)
+    run_and_wait("CHAT bob TWI_RandomTalents")
+    T.expect("TWI_RandomTalents", status().deferred == 0)
+
+    local str0 = risen.npc.skill_raw(p, risen.item.skill_id(risen.balance.skill_enum("Strength")))
+    run_and_wait("CHAT bob TWI_RandomStatBonus STR 1 250 5 5")
+    local str1 = risen.npc.skill_raw(p, risen.item.skill_id(risen.balance.skill_enum("Strength")))
+    T.expect("TWI_RandomStatBonus STR", str1 == str0 + 5, ("%s -> %s"):format(str0, str1))
 
     -- the gate: while the session is torn down nothing runs
     risen.emit("twitch.gate", false)
