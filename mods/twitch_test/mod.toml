@@ -1,0 +1,7 @@
+id          = "twitch_test"
+name        = "Twitch Integration: live scenario"
+version     = "0.1.0"
+author      = "kirides"
+description = "Scenario `twitch`: needs tools/fake_bridge.py running (it hosts the pipe). Only meaningful in a test run."
+main        = "main.lua"
+requires    = ["twitch_integration", "twi_kirides"]

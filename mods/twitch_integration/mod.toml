@@ -1,0 +1,9 @@
+id          = "twitch_integration"
+name        = "Twitch Integration (base)"
+version     = "0.1.0"
+author      = "kirides"
+description = "Reads redemptions, bits, follows and chat commands from a Twitch bridge over a named pipe and hands them, one at a time and only inside a running game, to the action mods (event twitch.command)."
+main        = "main.lua"
+
+# The game is the pipe CLIENT: the bridge program hosts \\.\pipe\__TwitchIntegration_Kirides_Conn (same name as the Gothic II version, so the same bridge works).
+pipes       = ["__TwitchIntegration_Kirides_Conn"]

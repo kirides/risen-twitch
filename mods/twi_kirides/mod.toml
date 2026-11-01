@@ -1,0 +1,7 @@
+id          = "twi_kirides"
+name        = "Twitch Integration: actions"
+version     = "0.1.0"
+author      = "kirides"
+description = "The TWI_* actions (spawn monsters, gold, health, time, game speed, ...) for the Twitch Integration base mod, the Risen counterpart of the Gothic II mod TWI_Kirides."
+main        = "main.lua"
+requires    = ["twitch_integration"]
