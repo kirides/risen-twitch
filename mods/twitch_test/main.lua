@@ -7,7 +7,7 @@ if not T.is_active() then return end
 
 T.plan {
     "pipe connected", "early line was not executed outside a session", "world ready", "early line executed in the session",
-    "TWI_Money gives gold", "TWI_Money takes gold", "TWI_SetHP", "TWI_Time", "TWI_SpawnEnemy", "TWI_SpawnRandomMonster",
+    "TWI_Money gives gold", "TWI_Money takes gold", "TWI_SetHP", "TWI_Time", "TWI_SpawnEnemy", "spawned monster shows the user name", "TWI_SpawnRandomMonster",
     "unknown command is ignored", "bad arguments do not come back", "unspawnable template",
     "console fallback (weather)", "TWI_RandomWaypoint", "TWI_Weakest_Weapon", "TWI_RandomArmor", "TWI_RandomTalent", "TWI_RandomTalents", "TWI_RandomStatBonus STR", "bad line is counted", "ping is ignored", "unmapped reward is dropped", "reward title is case-insensitive",
     "bits: one amount maps to several actions", "chat cooldown", "mapped events were executed", "gate closes with the session",
@@ -77,9 +77,15 @@ T.run(function()
     run_and_wait("CHAT bob TWI_SpawnEnemy Wolf 2")
     T.wait_until(function() return #risen.entity.npcs(p, 3000) >= n0 + 2 end, 10, "two wolves")
     T.expect("TWI_SpawnEnemy", #risen.entity.npcs(p, 3000) >= n0 + 2, ("%d -> %d"):format(n0, #risen.entity.npcs(p, 3000)))
+    local labelled = 0
+    for _, e in ipairs(risen.entity.npcs(p, 3000)) do
+        if e:focus_name() == "bob's Wolf" then labelled = labelled + 1 end
+    end
+    T.expect("spawned monster shows the user name", labelled == 2, "labelled: " .. labelled)
     n0 = #risen.entity.npcs(p, 3000)
     run_and_wait("CHAT bob TWI_SpawnRandomMonster 1")
-    T.expect("TWI_SpawnRandomMonster", #risen.entity.npcs(p, 3000) >= n0 + 1)
+    T.wait_until(function() return #risen.entity.npcs(p, 3000) >= n0 + 1 end, 10, "a random monster")
+    T.expect("TWI_SpawnRandomMonster", #risen.entity.npcs(p, 3000) >= n0 + 1, ("%d -> %d"):format(n0, #risen.entity.npcs(p, 3000)))
 
     local ig = status().ignored
     run_and_wait("CHAT bob NoSuchThing 1")

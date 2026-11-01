@@ -43,13 +43,27 @@ local function spot_near(player)
     return px + 400, py, pz
 end
 
-local function spawn_many(player, template, n, opts)
+-- who asked for the action being run (set by the dispatcher): spawned NPCs and monsters carry the name in their label
+local current_user = ""
+local spawn_counter = 0
+
+-- Every spawned NPC gets a unique entity name and the label "<who>'s <Template>" (the engine shows `FO_<entity name>` when the player looks at it):
+-- `label_for` overrides the text (TWI_SpawnNpcNamed). The label is a runtime text, so it is gone after a savegame is loaded.
+local function spawn_many(player, template, n, opts, label_for)
     if not R.template.exists(template) then return 0, "unknown template '" .. template .. "'" end
+    local who = label_for or current_user
     local made = 0
     for _ = 1, n do
         local x, y, z = spot_near(player)
         if not x then break end
-        if R.npc.spawn(template, x, y, z, opts) then made = made + 1 end
+        local o = {}
+        for k, v in pairs(opts or {}) do o[k] = v end
+        if who ~= "" then
+            spawn_counter = spawn_counter + 1
+            o.name = ("TWI_%d_%s"):format(spawn_counter, (who:gsub("[^%w_]", "")):sub(1, 20))
+            R.loc.set("FO_" .. o.name, label_for and who or (who .. "'s " .. template))
+        end
+        if R.npc.spawn(template, x, y, z, o) then made = made + 1 end
     end
     return made
 end
@@ -95,7 +109,7 @@ actions.twi_spawnnpcimmortal = function(_, argv, p)
 end
 actions.twi_spawnnpcnamed = function(_, argv, p)
     if #argv < 2 then return false, "usage: TWI_SpawnNpcNamed <name> <template> [amount]" end
-    local made, why = spawn_many(p, argv[2], amount(argv[3], 1), { peaceful = true })
+    local made, why = spawn_many(p, argv[2], amount(argv[3], 1), { peaceful = true }, argv[1])
     return made > 0, why
 end
 local function one_of(argv) return #argv > 0 and R.random.choice(argv) or nil end
@@ -308,7 +322,9 @@ R.on("twitch.command", function(ctx)
     if not fn then return end
     local player = R.entity.player()
     if not player then ctx.defer = true return end
+    current_user = ctx.user or ""
     local ok, res, why, msg = pcall(fn, ctx, ctx.argv, player)
+    current_user = ""
     if not ok then
         R.log.error(("twi: %s failed: %s"):format(ctx.command, tostring(res)))
         ctx.handled = true     -- a broken action must not come back again and again
