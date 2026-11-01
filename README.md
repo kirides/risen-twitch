@@ -4,7 +4,7 @@ Twitch integration for Risen Enhanced on top of [risen-spass](../risen-spass), t
 
 | Mod | Role |
 |---|---|
-| `mods/twitch_integration` | Base. Client of the named pipe `\\.\pipe\__TwitchIntegration_Kirides_Conn` that the Twitch bridge hosts. Reads `TYPE user command [args]` lines (`REWARD_ADD`, `BITS_USED`, `FOLLOW`, `CHAT`) and **executes them only inside a running game session** (after `world.ready`, player alive; not at the main menu, not while loading). Offers each event to the action mods with `risen.emit("twitch.command", ctx)`; a command nobody handles may run as a console command (`console_allow`, default `weather,timescale`). |
+| `mods/twitch_integration` | Base. Client (read-only) of the named pipe `\\.\pipe\__TwitchIntegration_Kirides_Conn` that `twitch-integration-connector.exe` hosts. Reads its JSON messages (`redemption`, `streamelements-perk`, `bits`, `chat`, `ping`; 2-byte little-endian length in front of each), maps them with **`custom.lua`** (rewards, perks, bits, chat texts -> action lists; replaces the Gothic II `twitch-integration.json`) and **executes the actions only inside a running game session** (after `world.ready`, player alive; not at the main menu, not while loading). Offers each event to the action mods with `risen.emit("twitch.command", ctx)`; a command nobody handles may run as a console command (`console_allow`, default `weather,timescale`). |
 | `mods/twi_kirides` | The `TWI_*` actions: `TWI_SpawnEnemy/Npc/NpcImmortal/NpcNamed/NpcOneOf/EnemyOneOf`, `TWI_SpawnRandomMonster[NoLimit]`, `TWI_Raid_Beasts/Lizards`, `TWI_Money`, `TWI_SpawnItemRandom`, `TWI_FullHeal`, `TWI_SetHP[_Timed]`, `TWI_SetMana[_Timed]`, `TWI_RandomHP_Pct`, `TWI_RandomStatBonus`, `TWI_RandomWaypoint`, `TWI_Weakest_Weapon`, `TWI_RandomArmor`, `TWI_RandomTalent[s]`, `TWI_Time`, `TWI_Weather`, `TWI_Southpark`, `TWI_Slowdown`. |
 | `mods/twitch_test` | Live scenario `twitch`. |
 
@@ -25,10 +25,11 @@ end)
 ## Test
 
 ```powershell
-# terminal 1: a stand-in for the bridge (sends one line the moment the game connects, normally at the main menu)
-python tools\fake_bridge.py "REWARD_ADD early TWI_Money 123"
+# terminal 1: a stand-in for the connector (a message pipe like the real one; sends the messages of the file the moment the game connects,
+# normally at the main menu). The real connector must NOT run at the same time: both host the same pipe name.
+python tools\fake_bridge.py --file early.jsonl      # early.jsonl: {"type":"streamelements-perk","data":{"title":"Gold","redeemer":"early"}}
 # terminal 2, in the risen-spass repository
 .\scripts\test-run.ps1 -ModPath ..\risen-twitch\mods -Mods twitch_integration,twi_kirides,twitch_test -WaitForResult -Seconds 300 -Scenario twitch
 ```
 
-Config of the base mod: `mods/twitch_integration/config.toml` (`risen.config`: `retry_s`, `interval_s`, `max_age_s`, `defer_s`, `print_redemptions`, `console_allow`, `ack`).
+Config of the base mod: `mods/twitch_integration/config.toml` (`risen.config`: `retry_s`, `interval_s`, `max_age_s`, `defer_s`, `print_redemptions`, `console_allow`). What Twitch events do: `mods/twitch_integration/custom.lua` (`rewards`, `perks`, `bits`, `chat`; an entry is a list of actions like `"TWI_Money 100"`, or `{ actions = {...}, cooldown_s = 120 }`). The connector's `cooldown_sec` and `message` of the old json were never used by the Gothic DLL; the cooldown works here.

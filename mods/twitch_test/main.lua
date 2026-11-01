@@ -1,6 +1,7 @@
 ---@diagnostic disable: need-check-nil, undefined-field, param-type-mismatch, undefined-global
 -- Scenario `twitch` (test-run.ps1 -ModPath <risen-twitch>\mods -Mods twitch_integration,twi_kirides,twitch_test -Scenario twitch -WaitForResult):
--- tools/fake_bridge.py hosts the pipe and sends "REWARD_ADD early TWI_Money 123" the moment the game connects (normally at the main menu).
+-- tools/fake_bridge.py hosts the pipe (message pipe, 2-byte length prefix, like the connector) and sends the StreamElements perk "Gold" (custom.lua: TWI_Money 150)
+-- the moment the game connects (normally at the main menu).
 local T = risen.test
 if not T.is_active() then return end
 
@@ -8,7 +9,8 @@ T.plan {
     "pipe connected", "early line was not executed outside a session", "world ready", "early line executed in the session",
     "TWI_Money gives gold", "TWI_Money takes gold", "TWI_SetHP", "TWI_Time", "TWI_SpawnEnemy", "TWI_SpawnRandomMonster",
     "unknown command is ignored", "bad arguments do not come back", "unspawnable template",
-    "console fallback (weather)", "TWI_RandomWaypoint", "TWI_Weakest_Weapon", "TWI_RandomArmor", "TWI_RandomTalent", "TWI_RandomTalents", "TWI_RandomStatBonus STR", "bad line is counted", "gate closes with the session",
+    "console fallback (weather)", "TWI_RandomWaypoint", "TWI_Weakest_Weapon", "TWI_RandomArmor", "TWI_RandomTalent", "TWI_RandomTalents", "TWI_RandomStatBonus STR", "bad line is counted", "ping is ignored", "unmapped reward is dropped", "reward title is case-insensitive",
+    "bits: one amount maps to several actions", "chat cooldown", "mapped events were executed", "gate closes with the session",
 }
 
 -- the gold at world.ready, read by a handler that runs before the base mod's tick can execute anything
@@ -54,7 +56,7 @@ T.run(function()
     local p = risen.entity.player()
     local gold0 = gold_at_ready
     T.wait_until(function() return status().executed >= 1 end, 30, "early line executed")
-    T.expect("early line executed in the session", risen.item.money(p) == gold0 + 123, ("%s -> %s"):format(gold0, risen.item.money(p)))
+    T.expect("early line executed in the session", risen.item.money(p) == gold0 + 150, ("%s -> %s"):format(gold0, risen.item.money(p)))
 
     local g = risen.item.money(p)
     run_and_wait("CHAT bob TWI_Money -50")
@@ -142,6 +144,25 @@ T.run(function()
     run_and_wait("CHAT bob TWI_RandomStatBonus STR 1 250 5 5")
     local str1 = risen.npc.skill_raw(p, risen.item.skill_id(risen.balance.skill_enum("Strength")))
     T.expect("TWI_RandomStatBonus STR", str1 == str0 + 5, ("%s -> %s"):format(str0, str1))
+
+    -- custom.lua: connector messages -> actions
+    local m0 = status().mapped
+    risen.emit("twitch.inject_message", '{"type":"ping"}')
+    T.expect("ping is ignored", status().mapped == m0)
+    risen.emit("twitch.inject_message", '{"type":"redemption","data":{"title":"nothing like this","redeemer":"x"}}')
+    T.expect("unmapped reward is dropped", status().mapped == m0 and status().unmapped >= 1)
+    risen.emit("twitch.inject_message", '{"type":"redemption","data":{"title":"tElEpOrT","redeemer":"dora the explorer"}}')
+    T.expect("reward title is case-insensitive", status().mapped == m0 + 1)
+    risen.emit("twitch.inject_message", '{"type":"bits","data":{"bitsUsed":100,"user":"erin"}}')
+    T.expect("bits: one amount maps to several actions", status().mapped == m0 + 3)
+    risen.emit("twitch.inject_message", '{"type":"chat","data":{"text":"#donate_50","sender":"fay"}}')
+    local m1 = status().mapped
+    risen.emit("twitch.inject_message", '{"type":"chat","data":{"text":"#donate_50","sender":"fay"}}')
+    T.expect("chat cooldown", status().mapped == m1, ("%d vs %d"):format(m1, status().mapped))
+    local gold_before = risen.item.money(p)
+    T.wait_until(function() return status().inbox == 0 end, 30, "queue drained")
+    T.wait_until(function() return risen.item.money(p) ~= gold_before end, 10, "gold changed by the mapped events")
+    T.expect("mapped events were executed", risen.item.money(p) == gold_before + 100 - 50, ("%s -> %s"):format(gold_before, risen.item.money(p)))
 
     -- the gate: while the session is torn down nothing runs
     risen.emit("twitch.gate", false)
